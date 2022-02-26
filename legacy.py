@@ -17,6 +17,81 @@ import torch
 import dnnlib
 from torch_utils import misc
 
+#for loading sequential stylegan2 weights 
+def load_sequential_weights(f): 
+    state_dict = torch.load(f)
+    
+    # Convert kwargs.
+    kwargs = dnnlib.EasyDict(
+        z_dim                   = 512,
+        c_dim                   = 0,
+        w_dim                   = 512,
+        img_resolution          = 256,
+        img_channels            = 3,
+    mapping_kwargs = dnnlib.EasyDict(
+        num_layers          = 8,
+        embed_features      = None,
+        layer_features      = None,
+        activation          = 'lrelu',
+        lr_multiplier       = 0.01,
+        w_avg_beta          = 1,
+    ),
+#     synthesis_kwargs = dnnlib.EasyDict(
+#         channel_base        = 16384 * 2,
+#         channel_max         = 512,
+#         num_fp16_res        = 0,
+#         conv_clamp          = None,
+#         architecture        = 'skip',
+#         resample_filter     = [1,3,3,1],
+#         use_noise           = True,
+#         activation          = 'lrelu',
+#     ),
+    )
+    
+    from training import networks_stylegan2
+    G = networks_stylegan2.Generator(**kwargs).eval().requires_grad_(False)
+    
+    tf_params = state_dict['g_ema']
+    _populate_module_params(G,
+            r'mapping\.w_avg',                                  lambda:     state_dict['latent_avg'],
+#             r'mapping\.embed\.weight',                          lambda:     
+#             r'mapping\.embed\.bias',                            lambda:    
+            r'mapping\.fc(\d+)\.weight',                        lambda i:   tf_params[f'style.{int(i)+1}.weight'],
+            r'mapping\.fc(\d+)\.bias',                          lambda i:   tf_params[f'style.{int(i)+1}.bias'],
+            r'synthesis\.b4\.const',                            lambda:     tf_params[f'input.input'][0],
+            r'synthesis\.b4\.conv1\.weight',                    lambda:     tf_params[f'conv1.conv.weight'][0],
+            r'synthesis\.b4\.conv1\.bias',                      lambda:     tf_params[f'conv1.activate.bias'],
+#             r'synthesis\.b4\.conv1\.noise_const',               lambda:     
+            r'synthesis\.b4\.conv1\.noise_strength',            lambda:     tf_params[f'conv1.noise.weight'][0],
+            r'synthesis\.b4\.conv1\.affine\.weight',            lambda: tf_params[f'conv1.conv.modulation.weight'],
+            r'synthesis\.b4\.conv1\.affine\.bias',              lambda:     tf_params[f'conv1.conv.modulation.bias'],
+            r'synthesis\.b4\.conv1\.noise_const',               lambda: tf_params[f'noises.noise_0'][0,0],   
+            r'synthesis\.b(\d+)\.conv0\.weight',                lambda r:   tf_params[f'convs.{int(np.log2(int(r)))*2-6}.conv.weight'][0],
+            r'synthesis\.b(\d+)\.conv0\.bias',                  lambda r:   tf_params[f'convs.{int(np.log2(int(r)))*2-6}.activate.bias'],
+             r'synthesis\.b(\d+)\.conv0\.noise_const',           lambda r:   tf_params[f'noises.noise_{int(np.log2(int(r)))*2-5}'][0, 0],
+            r'synthesis\.b(\d+)\.conv0\.noise_strength',        lambda r:   tf_params[f'convs.{int(np.log2(int(r)))*2-6}.noise.weight'][0],
+            r'synthesis\.b(\d+)\.conv0\.affine\.weight',        lambda r:   tf_params[f'convs.{int(np.log2(int(r)))*2-6}.conv.modulation.weight'],
+            r'synthesis\.b(\d+)\.conv0\.affine\.bias',          lambda r:   tf_params[f'convs.{int(np.log2(int(r)))*2-6}.conv.modulation.bias'],
+            r'synthesis\.b(\d+)\.conv1\.weight',                lambda r:   tf_params[f'convs.{int(np.log2(int(r)))*2-5}.conv.weight'][0],
+            r'synthesis\.b(\d+)\.conv1\.bias',                  lambda r:   tf_params[f'convs.{int(np.log2(int(r)))*2-5}.activate.bias'],
+             r'synthesis\.b(\d+)\.conv1\.noise_const',           lambda r:   tf_params[f'noises.noise_{int(np.log2(int(r)))*2-4}'][0, 0],
+            r'synthesis\.b(\d+)\.conv1\.noise_strength',        lambda r:   tf_params[f'convs.{int(np.log2(int(r)))*2-5}.noise.weight'][0],
+            r'synthesis\.b(\d+)\.conv1\.affine\.weight',        lambda r:   tf_params[f'convs.{int(np.log2(int(r)))*2-5}.conv.modulation.weight'],
+            r'synthesis\.b(\d+)\.conv1\.affine\.bias',          lambda r:   tf_params[f'convs.{int(np.log2(int(r)))*2-5}.conv.modulation.bias'],
+            r'synthesis.b4.torgb.weight',                lambda: tf_params['to_rgb1.conv.weight'][0], 
+            r'synthesis.b4.torgb.bias',                 lambda: tf_params['to_rgb1.bias'].squeeze(), 
+            r'synthesis.b4.torgb.affine.weight',          lambda: tf_params['to_rgb1.conv.modulation.weight'], 
+            r'synthesis.b4.torgb.affine.bias',            lambda: tf_params['to_rgb1.conv.modulation.bias'],                
+            r'synthesis\.b(\d+)\.torgb\.weight',                lambda r:   tf_params[f'to_rgbs.{int(np.log2(int(r)))-3}.conv.weight'][0],
+            r'synthesis\.b(\d+)\.torgb\.bias',                  lambda r:   tf_params[f'to_rgbs.{int(np.log2(int(r)))-3}.bias'].squeeze(),
+            r'synthesis\.b(\d+)\.torgb\.affine\.weight',        lambda r:   tf_params[f'to_rgbs.{int(np.log2(int(r)))-3}.conv.modulation.weight'],
+            r'synthesis\.b(\d+)\.torgb\.affine\.bias',          lambda r:   tf_params[f'to_rgbs.{int(np.log2(int(r)))-3}.conv.modulation.bias'],
+            
+#             r'synthesis\.b(\d+)\.skip\.weight',                 lambda r:   tf_params[f'synthesis/{r}x{r}/Skip/weight'][::-1, ::-1].transpose(3, 2, 0, 1),
+            r'.*\.resample_filter',                             None,
+        )
+    return G
+
 #----------------------------------------------------------------------------
 
 def load_network_pkl(f, force_fp16=False):
