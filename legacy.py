@@ -7,6 +7,9 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 """Converting legacy network pickle into the new format."""
+import os.path
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 import click
 import pickle
@@ -15,7 +18,8 @@ import copy
 import numpy as np
 import torch
 import dnnlib
-from torch_utils import misc
+from .torch_utils import misc
+#import misc 
 
 #for loading sequential stylegan2 weights 
 def load_sequential_weights(f): 
@@ -48,7 +52,7 @@ def load_sequential_weights(f):
 #     ),
     )
     
-    from training import networks_stylegan2
+    from .training import networks_stylegan2
     G = networks_stylegan2.Generator(**kwargs).eval().requires_grad_(False)
     
     tf_params = state_dict['g_ema']
